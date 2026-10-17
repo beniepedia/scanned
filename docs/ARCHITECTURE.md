@@ -1,0 +1,116 @@
+# Arsitektur
+
+## Peran tiap sisi
+
+CodeIgniter 4 dan Svelte berbagi satu origin (`http://spbu-svelte.test`):
+
+- **CodeIgniter** — entry point, shell HTML (`app/Views/app.php`), dan API JSON
+  di `/api/v1/*`. Tidak melakukan rendering UI.
+- **Svelte** — seluruh UI, navigasi (hash router), state antarmuka, validasi
+  formulir, dan pemanggilan API. Build statis diletakkan di `public/app/`.
+- **Jembatan** — `app/Helpers/vite_helper.php` membaca
+  `public/app/.vite/manifest.json` dan menyuntikkan `<link>`/`<script>` ke shell.
+  Mode dev memakai Vite dev server (`VITE_DEV=1`).
+
+Tidak ada dua implementasi UI: satu aplikasi Svelte, satu shell CI4.
+
+## Alur request
+
+```
+Browser
+  GET /                     -> CI4 Home::index -> app/Views/app.php -> bundle Svelte
+  GET /app/assets/*.js|css  -> file statis di public/app (Apache, tanpa CI4)
+  GET /api/v1/...           -> CI4 Api\V1\*Controller -> Service -> JsonStore
+```
+
+## Struktur direktori
+
+```
+app/
+  Config/Routes.php            route shell + grup api/v1
+  Controllers/Home.php         menyajikan shell SPA
+  Controllers/Api/V1/
+    BaseApiController.php      envelope JSON {success,data,meta}
+    OperatorController.php     list operator + login
+    MotorController.php        list/cari/tambah motor
+    TransaksiController.php    list (filter), tambah, hapus
+    ScanController.php         ekstraksi plat dari teks OCR
+  Libraries/Plate.php          normalisasi + validasi + ekstraksi plat (mirror TS)
+  Services/
+    JsonStore.php              store JSON dengan file lock
+    OperatorService.php        data operator dummy
+    MotorService.php           data motor (seed 10 kendaraan)
+    TransaksiService.php       transaksi + aturan "sudah isi hari ini"
+  Views/app.php                shell SPA
+  Helpers/vite_helper.php      manifest loader (prod) / dev server (dev)
+
+frontend/src/
+  main.ts                      mount Svelte
+  App.svelte                   pemilihan halaman + guard sesi/flow
+  pages/                       Login, Beranda, Scan, Bbm, Sukses, Riwayat
+  lib/
+    api/                       client.ts (fetch wrapper) + endpoints.ts
+    components/ui/             Button, Input, Dialog, Card, Badge, Toast, Spinner,
+                               EmptyState, NumberPad
+    components/app/            AppShell, BottomNav, OperatorCard, MetricCard, TxRow,
+                               PlateKeypad, ScanOverlay
+    data/                      seed data (operators, motors, fuels, seed transaksi)
+    ocr/scanner.ts             tesseract.js worker + preprocessing frame
+    repo/                      kontrak DataRepo + implementasi local & remote
+    stores/                    session, transaksi, flow, toast (runes)
+    utils/                     plate.ts (+ test), format.ts
+    router.svelte.ts           hash router
+    types.ts
+```
+
+## State & data
+
+- **Session** (`stores/session.svelte.ts`) — operator + nozzle + jam masuk,
+  persist di `localStorage` (`spbu:session`).
+- **Transaksi** (`stores/transaksi.svelte.ts`) — daftar transaksi, tambah, hapus,
+  `hariIni()`, `sudahIsiHariIni()`, `ringkasanHariIni()`.
+- **Flow** (`stores/flow.svelte.ts`) — plat/motor yang sedang diproses dan
+  transaksi terakhir untuk halaman sukses.
+- **Repo** (`lib/repo/`) — satu kontrak `DataRepo`, dua implementasi:
+
+| Mode     | Aktif bila                   | Penyimpanan                                  |
+| -------- | ---------------------------- | -------------------------------------------- |
+| `local`  | default                      | seed TS + `localStorage` (`spbu:motors`, `spbu:transaksi`) |
+| `remote` | `VITE_DATA_SOURCE=remote`    | API `/api/v1` → `writable/app/*.json`         |
+
+Halaman **hanya** memanggil `repo.*` dan store — tidak pernah `fetch` langsung,
+jadi penggantian backend tidak menyentuh komponen.
+
+## Endpoint API (v1)
+
+| Method | Path                  | Body                          | Keterangan                     |
+| ------ | --------------------- | ----------------------------- | ------------------------------ |
+| GET    | `/api/v1/operators`   | –                             | daftar operator (tanpa password) |
+| POST   | `/api/v1/operators/login` | `{nomor, password}`       | autentikasi dummy              |
+| GET    | `/api/v1/motors?q=`   | –                             | daftar/cari kendaraan          |
+| GET    | `/api/v1/motors/{plat}` | –                           | detail kendaraan (404 jika belum ada) |
+| POST   | `/api/v1/motors`      | `{nama, jenis, plat}`         | tambah kendaraan               |
+| GET    | `/api/v1/transaksi?tanggal=YYYY-MM-DD&plat=` | – | riwayat + meta `{total, liter, tanggal}` |
+| POST   | `/api/v1/transaksi`   | `{plat, bbm, liter}`          | catat transaksi                |
+| DELETE | `/api/v1/transaksi/{id}` | –                          | hapus transaksi                |
+| POST   | `/api/v1/scan`        | `{text}`                      | ekstrak plat dari teks OCR + status kendaraan |
+
+Envelope sukses: `{"success":true,"data":...,"meta":{}}`.
+Envelope gagal: `{"success":false,"message":"...","errors":{}}` dengan status
+400/401/404/422. Validasi dilakukan di controller (`validateData`) memakai data JSON.
+
+## Ganti dummy ke database (tahap 2)
+
+1. Buat migration + model (`php spark make:migration`, `make:model`).
+2. Ganti isi `MotorService`, `TransaksiService`, `OperatorService` agar memakai model.
+   Controller, route, dan frontend tidak perlu berubah.
+3. Hapus `JsonStore` dan isi `writable/app/`, lalu baru aktifkan
+   `VITE_DATA_SOURCE=remote` di frontend.
+
+## Catatan teknis
+
+- Debug toolbar CI4 dimatikan (`app/Config/Filters.php`) karena menyuntikkan HTML
+  ke shell SPA. Aktifkan kembali bila perlu debugging HTML.
+- `Plate.php` (PHP) dan `plate.ts` (TS) harus tetap sinkron; keduanya punya test.
+- Hash router dipilih agar tidak perlu rewrite rule tambahan. Untuk nested route
+  atau parameter path, ganti dengan `svelte-routing`.
