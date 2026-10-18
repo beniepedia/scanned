@@ -10,6 +10,8 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 8000;
+// Model bisa diganti lewat .env (env_file compose). Fallback ke model default.
+const AI_MODEL = (process.env.AI_MODEL || 'gemini-2.5-flash').trim();
 // Lokal: 127.0.0.1 (hanya via proxy Apache). Docker: HOST=0.0.0.0 (network internal).
 const HOST = process.env.HOST || '127.0.0.1';
 const API_KEY = process.env.GEMINI_API_KEY;
@@ -18,6 +20,8 @@ if (!API_KEY) {
     console.error("FATAL ERROR: GEMINI_API_KEY tidak ditemukan di environment variable server.");
     process.exit(1);
 }
+
+console.log(`[ai] model: ${AI_MODEL}`);
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
@@ -170,7 +174,7 @@ app.post('/analyze-vehicle', rateLimit, (req, res, next) => {
         let response;
         try {
             response = await withTimeout(ai.models.generateContent({
-                model: 'gemini-2.5-flash',
+                model: AI_MODEL,
                 contents: [
                     {
                         inlineData: {
