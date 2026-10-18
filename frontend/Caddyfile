@@ -1,0 +1,27 @@
+# Origin server (di belakang Cloudflare Tunnel; TLS diterminasi Cloudflare).
+:80 {
+	root * /srv
+	encode gzip zstd
+
+	# Backend AI: /ai/analyze-vehicle -> ai:8000/analyze-vehicle
+	handle /ai/* {
+		uri strip_prefix /ai
+		reverse_proxy ai:8000
+	}
+
+	# SPA (hash router) + aset statis
+	handle {
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

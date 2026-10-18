@@ -125,6 +125,22 @@ data:{color, plate, year, month}}`. Frontend mengompres gambar ≤900 KB
 (`lib/camera/compress.ts`) lalu mengirimnya sebagai `Blob`. Bila backend
 mengembalikan `success:false`/error/timeout, dialog **Input Manual** terbuka otomatis.
 
+## Docker (frontend + backend AI, tanpa PHP)
+
+Tahap ini bisa dijalankan tanpa Laragon/CI4:
+
+```bash
+docker compose up -d --build web ai      # uji lokal: http://localhost:8080
+docker compose up -d --build             # + cloudflared untuk akses publik
+```
+
+`web` = Caddy yang menyajikan SPA hasil build + memproksi `/ai/*` ke service `ai`.
+Bila Cloudflare Tunnel sudah ada di server: jalankan `docker compose up -d web ai`,
+lalu `docker network connect anpr_spbu_internal <container-tunnel>` dan arahkan
+ingress ke `http://web:80` (atau pakai `http://127.0.0.1:8080`).
+Akses publik lewat Cloudflare Tunnel (`TUNNEL_TOKEN`), TLS ditangani Cloudflare.
+Detail, konfigurasi Zero Trust, Access policy, dan troubleshooting: [`docs/DOCKER.md`](docs/DOCKER.md).
+
 ## Sumber data
 
 Default: **local** — dummy data + `localStorage` (tidak butuh backend).
@@ -161,6 +177,9 @@ npm run test                    # node:test untuk util plat
 
 - Login operator + pemilihan nozzle (sesi disimpan di perangkat)
 - Beranda: kartu SPBU/operator, 3 metrik, riwayat hari ini, empty/loading/error state
+- **Auto Scan** (tombol di Beranda): detektor plat heuristik lokal (tanpa model/dataset)
+  memicu capture otomatis saat plat stabil 3 frame; berhenti setelah 1 hasil sukses,
+  cooldown 10 s, maks 3 upload per aktivasi. Bisa dimatikan lewat switch di layar scan.
 - Scan plat: kamera `getUserMedia` (preview) → tombol **Ambil Gambar** → kompres
   ≤900 KB → kirim `Blob` ke backend AI → dialog hasil (plat, warna, masa berlaku,
   plat bisa dibetulkan) → kendaraan baru **didaftarkan otomatis** (tanpa mengisi

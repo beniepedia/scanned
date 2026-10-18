@@ -1,0 +1,53 @@
+# ANPR SPBU - frontend statis + backend AI (tanpa PHP/CI4).
+# TLS & domain publik ditangani Cloudflare Tunnel milik server.
+# Service `cloudflared` di bawah hanya dipakai bila belum ada tunnel sendiri:
+#   docker compose --profile tunnel up -d
+
+services:
+  ai:
+    build:
+      context: ./backend-node
+    env_file:
+      - ./backend-node/.env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8000"
+    expose:
+      - "8000"
+    networks:
+      - internal
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    depends_on:
+      ai:
+        condition: service_healthy
+    # Uji lokal + target tunnel model host: http://127.0.0.1:8080
+    ports:
+      - "127.0.0.1:8080:80"
+    networks:
+      - internal
+    restart: unless-stopped
+
+  # Opsional: jalankan hanya jika server belum punya tunnel sendiri.
+  cloudflared:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - web
+    networks:
+      - internal
+    restart: unless-stopped
+
+networks:
+  internal:
+    # Nama tetap supaya container tunnel milik stack lain bisa ikut bergabung:
+    #   docker network connect anpr_spbu_internal <nama-container-tunnel>
+    name: anpr_spbu_internal
+    driver: bridge

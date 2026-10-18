@@ -3,8 +3,15 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 
+// Base & output bisa berbeda per target:
+//  - CI4 (default): base '/app/', output ../public/app, entry src/main.ts
+//  - Docker/static: VITE_BUILD_BASE=/, VITE_BUILD_OUTDIR=dist, VITE_BUILD_HTML=1
+const buildBase = process.env.VITE_BUILD_BASE ?? '/app/';
+const buildOutDir = process.env.VITE_BUILD_OUTDIR ?? '../public/app';
+const buildHtml = process.env.VITE_BUILD_HTML === '1';
+
 export default defineConfig({
-  base: '/app/',
+  base: buildBase,
   plugins: [svelte(), tailwindcss()],
   resolve: {
     alias: {
@@ -41,12 +48,14 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '../public/app',
+    outDir: buildOutDir,
     emptyOutDir: true,
     manifest: true,
     sourcemap: false,
     rollupOptions: {
-      input: fileURLToPath(new URL('./src/main.ts', import.meta.url)),
+      input: buildHtml
+        ? fileURLToPath(new URL('./index.html', import.meta.url))
+        : fileURLToPath(new URL('./src/main.ts', import.meta.url)),
     },
   },
 });

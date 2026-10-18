@@ -10,6 +10,8 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 8000;
+// Lokal: 127.0.0.1 (hanya via proxy Apache). Docker: HOST=0.0.0.0 (network internal).
+const HOST = process.env.HOST || '127.0.0.1';
 const API_KEY = process.env.GEMINI_API_KEY;
 
 if (!API_KEY) {
@@ -240,6 +242,6 @@ app.post('/analyze-vehicle', rateLimit, (req, res, next) => {
     }
 });
 
-app.listen(PORT, '127.0.0.1', () => {
-    console.log(`Server Vehicle Analysis API berjalan pada http://127.0.0.1:${PORT} (akses via proxy /ai/)`);
+app.listen(PORT, HOST, () => {
+    console.log(`Server Vehicle Analysis API berjalan pada http://${HOST}:${PORT} (akses via proxy /ai/)`);
 });

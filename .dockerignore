@@ -1,0 +1,25 @@
+.git
+.gitignore
+**/.DS_Store
+**/*.log
+
+# PHP/CI4 (belum dipakai di Docker tahap ini)
+vendor/
+writable/
+public/app/
+build/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+frontend/.env.*.local
+
+# Backend
+backend-node/node_modules/
+backend-node/.env
+backend-node/.env.*
+**/.npm
+
+# Docker
+docker-compose.override.yml

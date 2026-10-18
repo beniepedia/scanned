@@ -63,6 +63,10 @@ npm view tailwindcss version
 | E2E (Playwright + Chrome, local)  | login → nozzle → beranda → scan → BBM → sukses → riwayat → hapus → reload → logout; 0 console error |
 | E2E (mode `remote`)               | alur sama berjalan di atas API CI4, data persist di `writable/app/*.json` |
 | Capture → backend AI (mock)        | sukses: dialog "Hasil Pembacaan" (plat dinormalisasi, warna, berlaku) → lanjut; 422/timeout: dialog Input Manual otomatis; payload ±12 KB |
+| Auto Scan (stub detektor)         | klik Auto Scan di Beranda → tepat **1 upload**, modal "Hasil Pembacaan" muncul, switch auto jadi OFF |
+| Auto Scan gagal (422)             | dialog Input Manual terbuka otomatis; "Scan Ulang" → upload ke-2; setelah batas `MAX_UPLOADS` auto OFF |
+| Mode manual                       | 3 s tanpa upload otomatis; tombol "Ambil Gambar" → 1 upload |
+| Unit test vision                  | 27 test lulus (Otsu/Laplacian, filter & skor kandidat, stabilitas auto-trigger) |
 | Kompresi gambar                   | 3000×2000 JPEG 1916 KB → **485 KB** (1600×1067, 1 percobaan) |
 | Backend AI (nyata)                | `POST /ai/analyze-vehicle` via proxy (http & https) → respons Gemini diterima; plat sintetis tidak terbaca → 422 → manual (sesuai desain) |
 | Responsif (360/390/768/1024/1440) | tidak ada horizontal overflow; rail nav tampil ≥768px; target sentuh ≥44px |

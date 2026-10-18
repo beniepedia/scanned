@@ -10,6 +10,7 @@
   import Skeleton from '$lib/components/ui/Skeleton.svelte';
   import { repo, messageOf } from '$lib/repo';
   import { session, endSession } from '$lib/stores/session.svelte';
+  import { setScanMode } from '$lib/stores/scanMode.svelte';
   import { resetFlow } from '$lib/stores/flow.svelte';
   import {
     txState,
@@ -85,7 +86,31 @@
       </p>
     {/if}
 
-    <Button size="lg" full onclick={() => onnavigate('scan')}>Scan Plat Motor</Button>
+    <div class="space-y-2">
+      <Button
+        size="lg"
+        full
+        onclick={() => {
+          setScanMode('manual');
+          onnavigate('scan');
+        }}>Scan Plat Motor</Button
+      >
+
+      <Button
+        variant="secondary"
+        size="lg"
+        full
+        onclick={() => {
+          setScanMode('auto');
+          onnavigate('scan');
+        }}>Auto Scan</Button
+      >
+
+      <p class="text-center text-xs text-muted">
+        Auto Scan mendeteksi plat secara otomatis lalu mengambil gambar dan mengirimnya
+        ke server AI. Tanpa Auto Scan, gambar diambil lewat tombol Ambil Gambar.
+      </p>
+    </div>
 
     <section class="space-y-2" aria-label="Riwayat hari ini">
       <div class="flex items-center justify-between">

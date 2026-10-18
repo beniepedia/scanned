@@ -10,7 +10,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.{ts,svelte,css}\"",
-    "test": "node --test src/lib/utils/plate.test.ts src/lib/api/vehicle.test.ts src/lib/camera/compress.test.ts"
+    "test": "node --test src/lib/utils/plate.test.ts src/lib/api/vehicle.test.ts src/lib/camera/compress.test.ts src/lib/vision/image-math.test.ts src/lib/vision/auto-trigger.test.ts src/lib/vision/plate-detector.test.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

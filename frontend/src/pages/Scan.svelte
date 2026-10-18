@@ -14,6 +14,9 @@
   import { compressImage } from '$lib/camera/compress';
   import { analyzeVehicle, VehicleApiError, type VehicleAnalysis } from '$lib/api/vehicle';
   import { formatPlat, isPlatValid, normalisePlat } from '$lib/utils/plate';
+  import { detectPlate, frameSharpness, type PlateCandidate } from '$lib/vision/plate-detector';
+  import { createAutoTrigger } from '$lib/vision/auto-trigger';
+  import { scanMode, setScanMode } from '$lib/stores/scanMode.svelte';
   import type { Motor, Route } from '$lib/types';
 
   interface Props {
@@ -24,6 +27,14 @@
   let { current, onnavigate }: Props = $props();
 
   type CameraStatus = 'requesting' | 'ready' | 'paused' | 'denied' | 'unavailable';
+
+  const AUTO_INTERVAL_MS = 350;
+  const AUTO_COOLDOWN_MS = Number(import.meta.env.VITE_AUTO_SCAN_COOLDOWN_MS ?? 10_000);
+  const AUTO_MAX_UPLOADS = Number(import.meta.env.VITE_AUTO_SCAN_MAX_UPLOADS ?? 3);
+  const AUTO_STABLE_FRAMES = Number(import.meta.env.VITE_AUTO_SCAN_STABLE_FRAMES ?? 3);
+  const MIN_SHARPNESS = 40;
+
+  const trigger = createAutoTrigger({ minStable: AUTO_STABLE_FRAMES });
 
   let camera: CameraStatus = $state('requesting');
   let online = $state(navigator.onLine);
@@ -47,11 +58,28 @@
 
   let pendingPlat = $state('');
 
+  let autoActive = $state(scanMode.mode === 'auto');
+  let autoAttempts = $state(0);
+  let autoCandidates = $state<PlateCandidate[]>([]);
+  let autoProgress = $state(0);
+  let cooldownLeft = $state(0);
+  let autoNote = $state('');
+  let cooldownUntil = 0;
+
   let filledOpen = $state(false);
 
   let analysisPreview = $derived(formatPlat(analysisPlate));
   let manualPreview = $derived(formatPlat(manualPlat));
   let analysisValid = $derived(isPlatValid(analysisPlate));
+
+  let autoStatus = $derived.by(() => {
+    if (!autoActive) return 'Auto Scan nonaktif';
+    if (cooldownLeft > 0) return `Cooldown ${cooldownLeft} detik`;
+    if (autoNote !== '') return autoNote;
+    if (autoProgress >= 1) return 'Plat stabil — mengambil gambar';
+    if (autoCandidates.length > 0) return 'Plat terdeteksi — menstabilkan';
+    return 'Mencari plat…';
+  });
 
   // Dialog terbuka = kamera berhenti (hemat baterai). Ditutup = preview lagi.
   $effect(() => {
@@ -65,6 +93,26 @@
     if (camera === 'paused' && !leaving && !pendingResolve) {
       void startCamera();
     }
+  });
+
+  $effect(() => {
+    if (!autoActive || camera !== 'ready') return;
+
+    const id = setInterval(runAutoFrame, AUTO_INTERVAL_MS);
+    return () => clearInterval(id);
+  });
+
+  $effect(() => {
+    if (!autoActive) {
+      cooldownLeft = 0;
+      return;
+    }
+
+    const id = setInterval(() => {
+      cooldownLeft = Math.max(0, Math.ceil((cooldownUntil - Date.now()) / 1000));
+    }, 500);
+
+    return () => clearInterval(id);
   });
 
   onMount(() => {
@@ -111,11 +159,29 @@
   }
 
   async function capture(): Promise<void> {
+    await doCapture(false);
+  }
+
+  async function captureAuto(): Promise<void> {
+    if (video === null) return;
+
+    if (frameSharpness(video) < MIN_SHARPNESS) {
+      autoNote = 'Gambar kurang tajam — tahan posisi';
+      trigger.reset();
+      autoProgress = 0;
+      return;
+    }
+
+    autoNote = '';
+    await doCapture(true);
+  }
+
+  async function doCapture(auto: boolean): Promise<void> {
     if (processing || camera !== 'ready' || video === null || stream === null) return;
 
     processing = true;
     errorMessage = '';
-    progress = 'Mengambil gambar…';
+    progress = auto ? 'Plat terdeteksi — mengambil gambar…' : 'Mengambil gambar…';
 
     try {
       const raw = await capturePhoto(video, stream);
@@ -129,11 +195,63 @@
       analysis = result;
       analysisPlate = result.plate ?? '';
       resultOpen = true;
+
+      if (auto) {
+        // Satu hasil sukses = auto berhenti; operator lanjut lewat dialog.
+        setAuto(false);
+        autoAttempts = 0;
+      } else {
+        cooldownUntil = Date.now() + AUTO_COOLDOWN_MS;
+      }
     } catch (caught) {
       handleFailure(caught);
+
+      if (auto) {
+        autoAttempts += 1;
+        cooldownUntil = Date.now() + AUTO_COOLDOWN_MS;
+
+        if (autoAttempts >= AUTO_MAX_UPLOADS) {
+          setAuto(false);
+          autoNote = 'Auto Scan berhenti setelah beberapa percobaan.';
+        }
+      }
     } finally {
       processing = false;
       progress = '';
+    }
+  }
+
+  function runAutoFrame(): void {
+    if (!autoActive || processing || camera !== 'ready' || video === null) return;
+    if (resultOpen || manualOpen || filledOpen || document.hidden) return;
+    if (Date.now() < cooldownUntil) return;
+
+    const candidates = detectPlate(video);
+    autoCandidates = candidates;
+
+    const state = trigger.push(candidates[0] ?? null);
+    autoProgress = trigger.progress();
+
+    if (state === 'trigger') {
+      autoNote = '';
+      void captureAuto();
+    } else if (state === 'reset') {
+      autoNote = '';
+    }
+  }
+
+  function setAuto(active: boolean): void {
+    autoActive = active;
+    setScanMode(active ? 'auto' : 'manual');
+    trigger.reset();
+    autoCandidates = [];
+    autoProgress = 0;
+    autoNote = '';
+
+    if (active) {
+      autoAttempts = 0;
+      cooldownUntil = 0;
+      cooldownLeft = 0;
     }
   }
 
@@ -234,6 +352,9 @@
     analysis = null;
     analysisPlate = '';
     errorMessage = '';
+    autoCandidates = [];
+    autoProgress = 0;
+    trigger.reset();
   }
 
   /** "Batal": batalkan proses scan dan keluar ke beranda. */
@@ -266,7 +387,17 @@
       ></video>
 
       {#if camera === 'ready'}
-        <ScanOverlay active={!processing} />
+        <ScanOverlay active={!processing && !autoActive} />
+      {/if}
+
+      {#if autoActive}
+        {#each autoCandidates.slice(0, 1) as box, index (index)}
+          <div
+            class="pointer-events-none absolute rounded-md border-[3px] border-tertiary"
+            style="left: {box.x * 100}%; top: {box.y * 100}%; width: {box.width * 100}%; height: {box.height * 100}%;"
+            aria-hidden="true"
+          ></div>
+        {/each}
       {/if}
 
       {#if processing}
@@ -308,6 +439,34 @@
           </div>
         </div>
       {/if}
+    </div>
+
+    <div class="card flex items-center justify-between gap-3 px-4 py-3">
+      <div class="min-w-0">
+        <p class="text-sm font-semibold text-ink">Auto Scan</p>
+        <p class="text-xs text-muted">
+          {autoStatus}{autoActive ? ` · percobaan ${autoAttempts}/${AUTO_MAX_UPLOADS}` : ''}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        role="switch"
+        aria-checked={autoActive}
+        aria-label="Aktifkan Auto Scan"
+        onclick={() => setAuto(!autoActive)}
+        class="relative h-8 w-14 shrink-0 rounded-full border-[1.5px] transition-colors"
+        class:border-primary={autoActive}
+        class:bg-primary={autoActive}
+        class:border-line={!autoActive}
+        class:bg-bg={!autoActive}
+      >
+        <span
+          class="absolute top-0.5 size-6 rounded-full bg-white shadow transition-[left]"
+          class:left-0.5={!autoActive}
+          class:left-6={autoActive}
+        ></span>
+      </button>
     </div>
 
     {#if errorMessage !== '' && !processing}

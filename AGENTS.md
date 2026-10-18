@@ -14,6 +14,9 @@ Panduan untuk agen/AI yang bekerja di repo ini.
   `/ai/` — jangan menambah kembali library OCR (tesseract/dsb) tanpa keputusan.
 - Gambar dikirim sebagai `Blob` multipart (field `file`) setelah dikompres
   ≤900 KB di `lib/camera/compress.ts`. Input manual hanya sebagai fallback.
+- Auto Scan memakai detektor heuristik lokal (`lib/vision/`) hanya sebagai
+  **pemicu**; jangan menambahkan OCR/YOLO lokal tanpa keputusan. Default OFF,
+  kirim frame penuh, dan wajib punya cooldown + batas upload.
 - Tidak ada database pada tahap ini. Data dummy: `frontend/src/lib/data/` (mode
   `local`) atau `writable/app/*.json` (mode `remote`).
 
@@ -70,6 +73,14 @@ hijau, plus `vendor/bin/phpunit` hijau, dan alur UI diuji di http://spbu-svelte.
 - Jangan commit `public/app/`, `.env`, `frontend/node_modules/`, `writable/app/`.
 - Jangan mengubah `public/index.php` atau menambah rewrite rule tanpa memperbarui
   `docs/VHOST.md`.
+
+## Docker
+
+- `docker-compose.yml`: `web` (Caddy + dist SPA), `ai` (backend-node), `cloudflared`.
+- Frontend dibangun dengan `VITE_BUILD_BASE=/ VITE_BUILD_HTML=1 VITE_BUILD_OUTDIR=dist`
+  (mode statis). Mode CI4 tetap default (`base=/app/`, output `public/app`).
+- Jangan menaruh `GEMINI_API_KEY`/`TUNNEL_TOKEN` di file yang di-commit.
+- Detail: `docs/DOCKER.md`.
 
 ## Dokumentasi terkait
 

@@ -118,6 +118,23 @@ Envelope gagal: `{"success":false,"message":"...","errors":{}}` dengan status
 - `SPBU Pertamina 11.222.344` di kartu operator adalah data SPBU (tenant), bukan
   nama aplikasi.
 
+## Auto Scan (pemicu lokal)
+
+- Detektor: **heuristik** di `src/lib/vision/plate-detector.ts` — frame diturunkan ke
+  384 px, grayscale, Otsu, connected components, filter rasio aspek 2:1–6:1,
+  luas 0,5%–40%, white-ratio ≥35%, kontras ≥55, margin tepi. Tanpa model YOLO,
+  tanpa dataset, tanpa OCR lokal.
+- Stabilitas: `src/lib/vision/auto-trigger.ts` menuntut kandidat stabil
+  `VITE_AUTO_SCAN_STABLE_FRAMES` (default 3) dengan drift pusat ≤5% sebelum capture.
+- Ketajaman: `frameSharpness()` (varians Laplacian) menolak frame blur (<40).
+- Kirim **frame penuh** (bukan crop) agar backend juga membaca warna kendaraan.
+- Guard: cooldown `VITE_AUTO_SCAN_COOLDOWN_MS` (10 s), maks upload
+  `VITE_AUTO_SCAN_MAX_UPLOADS` (3) per aktivasi, berhenti setelah 1 sukses,
+  berhenti saat tab hidden / dialog terbuka / kamera pause.
+- Entry point: tombol **Auto Scan** di Beranda (mode manual tetap tersedia) dan
+  switch di layar scan. Preferensi disimpan di `localStorage` (`spbu:scanMode`).
+- `VITE_VISION_STUB=1` mengganti detektor dengan kandidat tetap untuk uji otomatis.
+
 ## Aset & jaringan
 
 - Tidak ada aset dari CDN: font (`@fontsource`), manifest/ikon semuanya same-origin.
