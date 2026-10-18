@@ -40,6 +40,20 @@ const upload = multer({
 
 app.use(express.json());
 
+// Access log ringkas: cara termudah memastikan request dari frontend sampai.
+app.use((req, res, next) => {
+    const started = Date.now();
+    const bodySize = Number(req.headers['content-length'] ?? 0);
+
+    res.on('finish', () => {
+        console.log(
+            `[req] ${req.method} ${req.originalUrl} -> ${res.statusCode} ${Date.now() - started}ms ${bodySize}B`
+        );
+    });
+
+    next();
+});
+
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', service: 'vehicle-analysis', uptime: process.uptime() });
 });
@@ -168,6 +182,7 @@ app.post('/analyze-vehicle', rateLimit, (req, res, next) => {
                 ]
             }), 25_000);
         } catch (aiCallError) {
+            console.error('[ai] Gemini gagal:', aiCallError?.message ?? aiCallError);
             return res.status(502).json({
                 success: false,
                 message: `Kesalahan komunikasi dengan layanan AI: ${aiCallError.message}`,
