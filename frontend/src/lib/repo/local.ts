@@ -1,8 +1,8 @@
-import type { Motor, ScanResult, Transaksi } from '$lib/types';
+import type { Motor, Transaksi } from '$lib/types';
 import { seedMotors } from '$lib/data/motors';
 import { operators } from '$lib/data/operators';
 import { seedTransaksi } from '$lib/data/seed';
-import { extractPlatFromText, normalisePlat, nowTime, todayLocal } from '$lib/utils/plate';
+import { normalisePlat, nowTime, todayLocal } from '$lib/utils/plate';
 import type { DataRepo, LoginResult } from './types';
 
 const MOTOR_KEY = 'spbu:motors';
@@ -52,7 +52,14 @@ export function createLocalRepo(): DataRepo {
       const existing = rows.find((m) => m.plat === plat);
       if (existing) return existing;
 
-      const created: Motor = { plat, nama: motor.nama.trim(), jenis: motor.jenis.trim() };
+      const created: Motor = {
+        plat,
+        nama: motor.nama.trim(),
+        jenis: motor.jenis.trim(),
+        ...(motor.warna ? { warna: motor.warna } : {}),
+        ...(motor.berlakuTahun ? { berlakuTahun: motor.berlakuTahun } : {}),
+        ...(motor.berlakuBulan ? { berlakuBulan: motor.berlakuBulan } : {}),
+      };
       rows.push(created);
       write(MOTOR_KEY, rows);
       return created;
@@ -62,7 +69,7 @@ export function createLocalRepo(): DataRepo {
       return transaksi().sort((a, b) => b.id - a.id);
     },
 
-    async createTransaksi({ plat, bbm, liter }) {
+    async createTransaksi({ plat, bbm, liter, warna }) {
       const rows = transaksi();
       const created: Transaksi = {
         id: rows.reduce((max, t) => Math.max(max, t.id), 0) + 1,
@@ -71,6 +78,7 @@ export function createLocalRepo(): DataRepo {
         waktu: nowTime(),
         bbm,
         liter,
+        ...(warna ? { warna } : {}),
       };
       rows.push(created);
       write(TX_KEY, rows);
@@ -81,15 +89,5 @@ export function createLocalRepo(): DataRepo {
       write(TX_KEY, transaksi().filter((t) => t.id !== id));
     },
 
-    async scanText(text): Promise<ScanResult> {
-      const plat = extractPlatFromText(text);
-      if (plat === null) throw new Error('Nomor plat tidak terbaca. Coba foto ulang atau input manual.');
-
-      const motor = motors().find((m) => m.plat === plat) ?? null;
-      const today = todayLocal();
-      const sudahIsiHariIni = transaksi().some((t) => t.plat === plat && t.tanggal === today);
-
-      return { plat, motor, sudahIsiHariIni };
-    },
   };
 }

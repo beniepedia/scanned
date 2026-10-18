@@ -5,7 +5,7 @@
   import Button from '$lib/components/ui/Button.svelte';
   import Dialog from '$lib/components/ui/Dialog.svelte';
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
-  import Spinner from '$lib/components/ui/Spinner.svelte';
+  import Skeleton from '$lib/components/ui/Skeleton.svelte';
   import { BBM_TYPES, type BbmType, type Route, type Transaksi } from '$lib/types';
   import {
     txState,
@@ -16,7 +16,7 @@
   } from '$lib/stores/transaksi.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { messageOf } from '$lib/repo';
-  import { normalisePlat } from '$lib/utils/plate';
+  import { formatPlat, normalisePlat } from '$lib/utils/plate';
   import { liter } from '$lib/utils/format';
 
   interface Props {
@@ -128,8 +128,13 @@
     </div>
 
     {#if txState.loading}
-      <div class="card flex items-center justify-center gap-2 py-10 text-sm text-muted">
-        <Spinner class="size-4" /> Memuat transaksi…
+      <div class="space-y-2" aria-label="Memuat riwayat">
+        {#each [1, 2, 3, 4] as index (index)}
+          <div class="card px-4 py-3">
+            <Skeleton class="h-4 w-32" />
+            <Skeleton class="mt-2 h-3 w-44" />
+          </div>
+        {/each}
       </div>
     {:else if txState.error !== ''}
       <div class="card space-y-2 p-4">
@@ -187,7 +192,9 @@
 <Dialog
   bind:open={deleteOpen}
   title="Hapus transaksi?"
-  description={deleteTarget ? `${deleteTarget.plat} · ${deleteTarget.waktu}` : ''}
+  description={deleteTarget
+    ? `${formatPlat(deleteTarget.plat)} · ${deleteTarget.waktu}`
+    : ''}
 >
   <p class="text-sm text-muted">
     Transaksi dihapus dari penyimpanan lokal perangkat. Tindakan ini tidak bisa dibatalkan.

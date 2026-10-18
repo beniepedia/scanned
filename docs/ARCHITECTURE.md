@@ -34,7 +34,6 @@ app/
     OperatorController.php     list operator + login
     MotorController.php        list/cari/tambah motor
     TransaksiController.php    list (filter), tambah, hapus
-    ScanController.php         ekstraksi plat dari teks OCR
   Libraries/Plate.php          normalisasi + validasi + ekstraksi plat (mirror TS)
   Services/
     JsonStore.php              store JSON dengan file lock
@@ -55,7 +54,9 @@ frontend/src/
     components/app/            AppShell, BottomNav, OperatorCard, MetricCard, TxRow,
                                PlateKeypad, ScanOverlay
     data/                      seed data (operators, motors, fuels, seed transaksi)
-    ocr/scanner.ts             tesseract.js worker + preprocessing frame
+    camera/capture.ts          preview kamera + ambil still (Blob)
+    camera/compress.ts         kompresi JPEG <=900 KB (canvas)
+    api/vehicle.ts             upload Blob ke backend AI + normalisasi hasil
     repo/                      kontrak DataRepo + implementasi local & remote
     stores/                    session, transaksi, flow, toast (runes)
     utils/                     plate.ts (+ test), format.ts
@@ -93,7 +94,6 @@ jadi penggantian backend tidak menyentuh komponen.
 | GET    | `/api/v1/transaksi?tanggal=YYYY-MM-DD&plat=` | – | riwayat + meta `{total, liter, tanggal}` |
 | POST   | `/api/v1/transaksi`   | `{plat, bbm, liter}`          | catat transaksi                |
 | DELETE | `/api/v1/transaksi/{id}` | –                          | hapus transaksi                |
-| POST   | `/api/v1/scan`        | `{text}`                      | ekstrak plat dari teks OCR + status kendaraan |
 
 Envelope sukses: `{"success":true,"data":...,"meta":{}}`.
 Envelope gagal: `{"success":false,"message":"...","errors":{}}` dengan status
@@ -106,6 +106,29 @@ Envelope gagal: `{"success":false,"message":"...","errors":{}}` dengan status
    Controller, route, dan frontend tidak perlu berubah.
 3. Hapus `JsonStore` dan isi `writable/app/`, lalu baru aktifkan
    `VITE_DATA_SOURCE=remote` di frontend.
+
+## Penamaan
+
+- Nama produk: **ANPR SPBU** (Automatic Number Plate Recognition SPBU).
+- Yang dipertahankan agar konfigurasi tidak putus: folder `spbu-svelte`, vhost
+  `spbu-svelte.test`, namespace PHP `App\`, dan nama paket composer.
+- PWA: `public/manifest.webmanifest` ("ANPR SPBU"), ikon `public/icons/`, dan
+  service worker `public/sw.js` (cache `anpr-spbu-v1`) aktif pada build produksi.
+  Detail: `docs/PWA.md`.
+- `SPBU Pertamina 11.222.344` di kartu operator adalah data SPBU (tenant), bukan
+  nama aplikasi.
+
+## Aset & jaringan
+
+- Tidak ada aset dari CDN: font (`@fontsource`), manifest/ikon semuanya same-origin.
+- Service worker: network-first untuk shell, cache-first untuk aset, skip `/api/*` dan `/ai/*`.
+- Pembacaan plat memakai backend AI eksternal: `POST /ai/analyze-vehicle`
+  (Express + Gemini) yang diproksikan Apache ke `127.0.0.1:8000`, same-origin.
+  Gambar dikirim sebagai `Blob` multipart (field `file`) setelah dikompres
+  ≤900 KB; bila backend menjawab `success:false`/error/timeout, UI membuka
+  dialog input manual.
+- Skeleton (`ui/Skeleton.svelte`) untuk loading, toast global untuk error tak
+  tertangkap (`<svelte:window onerror / onunhandledrejection>`).
 
 ## Catatan teknis
 

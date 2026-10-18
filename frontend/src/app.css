@@ -16,7 +16,7 @@
   --color-bg: #f3f5f8;
   --color-surface: #ffffff;
   --color-ink: #1a1d21;
-  --color-muted: #6b7280;
+  --color-muted: #5b6472;
   --color-line: #d5dce5;
   --color-danger: #e01a22;
   --color-danger-soft: #ffebee;
@@ -32,18 +32,19 @@
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
 
-  --animate-scanline: scanline 2.4s ease-in-out infinite;
   --animate-pop: pop 260ms ease-out;
 }
 
+/* Garis scan bergerak turun: `top` memakai persentase tinggi kontainer,
+   sedangkan translateY persen akan dihitung terhadap tinggi elemen (4px). */
 @keyframes scanline {
   0%,
   100% {
-    transform: translateY(0);
+    top: 0;
     opacity: 0.35;
   }
   50% {
-    transform: translateY(calc(var(--scan-height, 160px) - 4px));
+    top: calc(100% - 4px);
     opacity: 1;
   }
 }
@@ -56,6 +57,16 @@
   to {
     transform: scale(1);
     opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
   }
 }
 

@@ -6,13 +6,6 @@ export interface LoginResponse {
   nama: string;
 }
 
-export interface ScanResponse {
-  plat: string;
-  plat_formatted: string;
-  motor: Motor | null;
-  sudah_isi_hari_ini: boolean;
-}
-
 export interface TransaksiMeta {
   total: number;
   liter: number;
@@ -28,9 +21,7 @@ export const api = {
   createMotor: (body: Motor) => http.post<Motor>('/motors', body),
 
   transaksi: () => http.get<Transaksi[]>('/transaksi'),
-  createTransaksi: (body: { plat: string; bbm: BbmType; liter: number }) =>
+  createTransaksi: (body: { plat: string; bbm: BbmType; liter: number; warna?: string }) =>
     http.post<Transaksi>('/transaksi', body),
   deleteTransaksi: (id: number) => http.delete<{ id: number }>(`/transaksi/${id}`),
-
-  scan: (text: string) => http.post<ScanResponse>('/scan', { text }),
 };

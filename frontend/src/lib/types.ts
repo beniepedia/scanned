@@ -19,6 +19,10 @@ export interface Motor {
   plat: string;
   nama: string;
   jenis: string;
+  /** Hasil pembacaan AI (opsional). */
+  warna?: string;
+  berlakuTahun?: number;
+  berlakuBulan?: string;
 }
 
 export interface Transaksi {
@@ -30,12 +34,8 @@ export interface Transaksi {
   waktu: string;
   bbm: BbmType;
   liter: number;
-}
-
-export interface ScanResult {
-  plat: string;
-  motor: Motor | null;
-  sudahIsiHariIni: boolean;
+  /** Warna kendaraan hasil AI (opsional). */
+  warna?: string;
 }
 
 export type Route = 'login' | 'beranda' | 'scan' | 'bbm' | 'sukses' | 'riwayat';

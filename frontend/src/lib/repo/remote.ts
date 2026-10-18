@@ -25,14 +25,5 @@ export function createRemoteRepo(): DataRepo {
     async deleteTransaksi(id) {
       await api.deleteTransaksi(id);
     },
-
-    async scanText(text) {
-      const result = await api.scan(text);
-      return {
-        plat: result.plat,
-        motor: result.motor,
-        sudahIsiHariIni: result.sudah_isi_hari_ini,
-      };
-    },
   };
 }

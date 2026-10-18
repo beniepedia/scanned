@@ -55,10 +55,28 @@ final class MotorService
     /**
      * @return Motor
      */
-    public function create(string $nama, string $jenis, string $plat): array
-    {
-        $key    = Plate::normalise($plat);
-        $motor  = ['plat' => $key, 'nama' => trim($nama), 'jenis' => trim($jenis)];
+    public function create(
+        string $nama,
+        string $jenis,
+        string $plat,
+        ?string $warna = null,
+        ?int $berlakuTahun = null,
+        ?string $berlakuBulan = null
+    ): array {
+        $key   = Plate::normalise($plat);
+        $motor = ['plat' => $key, 'nama' => trim($nama), 'jenis' => trim($jenis)];
+
+        if ($warna !== null && trim($warna) !== '') {
+            $motor['warna'] = strtolower(trim($warna));
+        }
+
+        if ($berlakuTahun !== null) {
+            $motor['berlakuTahun'] = $berlakuTahun;
+        }
+
+        if ($berlakuBulan !== null && trim($berlakuBulan) !== '') {
+            $motor['berlakuBulan'] = trim($berlakuBulan);
+        }
 
         $this->store->mutate(static function (array $rows) use ($motor): array {
             foreach ($rows as $row) {

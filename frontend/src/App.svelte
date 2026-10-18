@@ -8,6 +8,26 @@
   import Bbm from './pages/Bbm.svelte';
   import Sukses from './pages/Sukses.svelte';
   import Riwayat from './pages/Riwayat.svelte';
+  import { pushToast } from '$lib/stores/toast.svelte';
+
+  let lastErrorAt = 0;
+
+  function errorMessage(reason: unknown): string {
+    if (reason instanceof Error) return reason.message;
+    if (typeof reason === 'string') return reason;
+    return 'Kesalahan tak terduga pada antarmuka.';
+  }
+
+  // Jangan biarkan error tak tertangkap berujung layar putih.
+  function reportError(event: unknown): void {
+    const now = Date.now();
+    if (now - lastErrorAt < 5000) return;
+
+    lastErrorAt = now;
+    const reason = event instanceof ErrorEvent ? (event.error ?? event.message) : event;
+    pushToast(errorMessage(reason).slice(0, 140), 'error');
+    console.error(reason);
+  }
 
   $effect(() => {
     const loggedIn = session.operator !== null;
@@ -32,6 +52,11 @@
     }
   });
 </script>
+
+<svelte:window
+  onunhandledrejection={(event) => reportError(event.reason)}
+  onerror={(event) => reportError(event)}
+/>
 
 {#if router.route === 'login'}
   <Login />

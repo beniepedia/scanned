@@ -2,16 +2,18 @@
   import { onMount } from 'svelte';
   import AppShell from '$lib/components/app/AppShell.svelte';
   import ScanOverlay from '$lib/components/app/ScanOverlay.svelte';
-  import PlateKeypad from '$lib/components/app/PlateKeypad.svelte';
+  import Badge from '$lib/components/ui/Badge.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import Dialog from '$lib/components/ui/Dialog.svelte';
   import { repo, messageOf } from '$lib/repo';
   import { sudahIsiHariIni } from '$lib/stores/transaksi.svelte';
-  import { setPendingPlate } from '$lib/stores/flow.svelte';
+  import { resetFlow, setPendingPlate } from '$lib/stores/flow.svelte';
   import { pushToast } from '$lib/stores/toast.svelte';
   import { go } from '$lib/router.svelte';
-  import { getOcrWorker, preprocessFrame, recognise, terminateOcr } from '$lib/ocr/scanner';
-  import { extractPlatFromText, formatPlat, isPlatValid, normalisePlat } from '$lib/utils/plate';
+  import { capturePhoto, startPreview, stopPreview } from '$lib/camera/capture';
+  import { compressImage } from '$lib/camera/compress';
+  import { analyzeVehicle, VehicleApiError, type VehicleAnalysis } from '$lib/api/vehicle';
+  import { formatPlat, isPlatValid, normalisePlat } from '$lib/utils/plate';
   import type { Motor, Route } from '$lib/types';
 
   interface Props {
@@ -21,166 +23,155 @@
 
   let { current, onnavigate }: Props = $props();
 
-  type CameraStatus = 'requesting' | 'ready' | 'denied' | 'unavailable';
-
-  const SCAN_INTERVAL = 2500;
-  const MAX_ATTEMPTS = 4;
+  type CameraStatus = 'requesting' | 'ready' | 'paused' | 'denied' | 'unavailable';
 
   let camera: CameraStatus = $state('requesting');
-  let ocrMessage = $state('Menyiapkan kamera…');
-  let attempts = $state(0);
-  let busy = $state(false);
+  let online = $state(navigator.onLine);
 
   let video: HTMLVideoElement | null = $state(null);
   let stream: MediaStream | null = null;
-  let intervalId: ReturnType<typeof setInterval> | null = null;
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let leaving = false;
+  let pendingResolve = $state(false);
+
+  let processing = $state(false);
+  let progress = $state('');
+  let errorMessage = $state('');
+
+  let analysis = $state<VehicleAnalysis | null>(null);
+  let analysisPlate = $state('');
+  let resultOpen = $state(false);
 
   let manualOpen = $state(false);
   let manualPlat = $state('');
   let manualError = $state('');
 
-  let newMotorOpen = $state(false);
   let pendingPlat = $state('');
-  let nama = $state('');
-  let jenis = $state('');
-  let formError = $state('');
-  let savingMotor = $state(false);
 
   let filledOpen = $state(false);
 
+  let analysisPreview = $derived(formatPlat(analysisPlate));
   let manualPreview = $derived(formatPlat(manualPlat));
+  let analysisValid = $derived(isPlatValid(analysisPlate));
+
+  // Dialog terbuka = kamera berhenti (hemat baterai). Ditutup = preview lagi.
+  $effect(() => {
+    const dialogOpen = resultOpen || manualOpen || filledOpen;
+
+    if (dialogOpen) {
+      if (camera === 'ready') pausePreview();
+      return;
+    }
+
+    if (camera === 'paused' && !leaving && !pendingResolve) {
+      void startCamera();
+    }
+  });
 
   onMount(() => {
     if (!navigator.mediaDevices?.getUserMedia) {
       camera = 'unavailable';
-      ocrMessage = 'Perangkat/browser ini tidak mendukung kamera.';
     } else {
       void startCamera();
     }
 
+    const updateOnline = () => (online = navigator.onLine);
+    window.addEventListener('online', updateOnline);
+    window.addEventListener('offline', updateOnline);
+
     return () => {
-      stopScanLoop();
-      stopCamera();
-      void terminateOcr();
+      leaving = true;
+      window.removeEventListener('online', updateOnline);
+      window.removeEventListener('offline', updateOnline);
+      stopPreview(stream, video);
     };
   });
 
   async function startCamera(): Promise<void> {
+    if (video === null) return;
+
     camera = 'requesting';
 
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } },
-        audio: false,
-      });
-
-      if (video !== null) {
-        video.srcObject = stream;
-        await video.play().catch(() => undefined);
-      }
-
+      stream = await startPreview(video);
       camera = 'ready';
-      startScanLoop();
     } catch (caught) {
       const name = caught instanceof DOMException ? caught.name : '';
       camera = name === 'NotAllowedError' || name === 'SecurityError' ? 'denied' : 'unavailable';
-      ocrMessage =
+      errorMessage =
         camera === 'denied'
-          ? 'Izin kamera ditolak. Aktifkan izin kamera, atau pakai input manual.'
+          ? 'Izin kamera ditolak. Aktifkan izin kamera untuk memakai fitur scan.'
           : 'Kamera tidak tersedia. Kamera butuh HTTPS atau localhost.';
     }
   }
 
-  function stopCamera(): void {
-    stream?.getTracks().forEach((track) => track.stop());
+  function pausePreview(): void {
+    stopPreview(stream, video);
     stream = null;
-
-    if (video !== null) video.srcObject = null;
+    camera = 'paused';
   }
 
-  function startScanLoop(): void {
-    stopScanLoop();
-    attempts = 0;
-    ocrMessage = 'Memuat mesin OCR…';
-    intervalId = setInterval(() => void tryScan(), SCAN_INTERVAL);
+  async function capture(): Promise<void> {
+    if (processing || camera !== 'ready' || video === null || stream === null) return;
 
-    timeoutId = setTimeout(() => {
-      stopScanLoop();
-      ocrMessage = 'Plat belum terbaca otomatis.';
-      manualOpen = true;
-      pushToast('Plat belum terbaca. Silakan input manual.', 'info');
-    }, 12_000);
-
-    void getOcrWorker((status, progress) => {
-      if (status === 'recognizing text') return;
-      ocrMessage = `Memuat OCR… ${Math.round(progress * 100)}%`;
-    }).catch((caught) => {
-      ocrMessage = `OCR gagal dimuat: ${messageOf(caught)}`;
-    });
-  }
-
-  function stopScanLoop(): void {
-    if (intervalId !== null) clearInterval(intervalId);
-    if (timeoutId !== null) clearTimeout(timeoutId);
-    intervalId = null;
-    timeoutId = null;
-  }
-
-  async function tryScan(): Promise<void> {
-    if (busy || camera !== 'ready' || video === null || video.videoWidth === 0) return;
-
-    busy = true;
+    processing = true;
+    errorMessage = '';
+    progress = 'Mengambil gambar…';
 
     try {
-      const canvas = preprocessFrame(video);
-      const text = await recognise(canvas);
-      const plat = extractPlatFromText(text);
-      attempts += 1;
+      const raw = await capturePhoto(video, stream);
+      progress = 'Mengompres gambar…';
 
-      if (plat !== null) {
-        stopScanLoop();
-        ocrMessage = `Terbaca: ${formatPlat(plat)}`;
-        await resolvePlate(plat);
-        return;
-      }
+      const compressed = await compressImage(raw);
+      progress = `Mengirim gambar (${Math.round(compressed.blob.size / 1024)} KB)…`;
 
-      ocrMessage =
-        text.trim() === ''
-          ? 'Belum ada teks terbaca. Dekatkan plat ke kotak…'
-          : `Terbaca "${text.trim().slice(0, 32)}". Coba lagi…`;
+      const result = await analyzeVehicle(compressed.blob);
 
-      if (attempts >= MAX_ATTEMPTS) {
-        stopScanLoop();
-        manualOpen = true;
-        pushToast('Plat belum terbaca otomatis. Silakan input manual.', 'info');
-      }
+      analysis = result;
+      analysisPlate = result.plate ?? '';
+      resultOpen = true;
     } catch (caught) {
-      stopScanLoop();
-      ocrMessage = `OCR gagal: ${messageOf(caught)}`;
+      handleFailure(caught);
     } finally {
-      busy = false;
+      processing = false;
+      progress = '';
     }
+  }
+
+  /** Backend menolak / jaringan gagal → input manual otomatis terbuka. */
+  function handleFailure(caught: unknown): void {
+    if (caught instanceof VehicleApiError) {
+      errorMessage = caught.message;
+    } else {
+      errorMessage = messageOf(caught);
+    }
+
+    pushToast(errorMessage, 'error');
+    manualPlat = analysis?.plate ?? '';
+    manualError = '';
+    manualOpen = true;
   }
 
   async function resolvePlate(plat: string): Promise<void> {
+    pendingResolve = true;
     pendingPlat = normalisePlat(plat);
-    const motor = await repo.findMotor(pendingPlat).catch(() => null);
 
-    if (motor === null) {
-      nama = '';
-      jenis = '';
-      formError = '';
-      newMotorOpen = true;
-      return;
+    try {
+      const motor = await repo.findMotor(pendingPlat).catch(() => null);
+
+      if (motor === null) {
+        proceed(await registerVehicle(pendingPlat));
+        return;
+      }
+
+      proceed(motor);
+    } finally {
+      pendingResolve = false;
     }
-
-    proceed(motor);
   }
 
   function proceed(motor: Motor): void {
-    stopScanLoop();
-    stopCamera();
+    leaving = true;
+    pausePreview();
     setPendingPlate(motor.plat, motor);
 
     if (sudahIsiHariIni(motor.plat)) {
@@ -189,6 +180,13 @@
     }
 
     go('bbm');
+  }
+
+  function submitResult(): void {
+    if (!analysisValid) return;
+
+    resultOpen = false;
+    void resolvePlate(analysisPlate);
   }
 
   function submitManual(): void {
@@ -202,48 +200,62 @@
     void resolvePlate(manualPlat);
   }
 
-  async function saveMotor(): Promise<void> {
-    if (nama.trim() === '' || jenis.trim() === '') {
-      formError = 'Nama pemilik dan jenis kendaraan wajib diisi.';
-      return;
-    }
-
-    savingMotor = true;
+  /**
+   * Plat belum terdaftar: langsung daftarkan otomatis (tanpa mengisi nama
+   * pelanggan) supaya operator cepat lanjut ke pemilihan BBM.
+   */
+  async function registerVehicle(plat: string): Promise<Motor> {
+    const fallback: Motor = {
+      plat,
+      nama: 'Tanpa nama',
+      jenis: analysis?.color ? `Motor ${analysis.color}` : 'Motor',
+      ...(analysis?.color ? { warna: analysis.color } : {}),
+      ...(analysis?.year ? { berlakuTahun: analysis.year } : {}),
+      ...(analysis?.month ? { berlakuBulan: analysis.month } : {}),
+    };
 
     try {
-      const motor = await repo.createMotor({ plat: pendingPlat, nama: nama, jenis: jenis });
-      newMotorOpen = false;
-      pushToast(`Kendaraan ${formatPlat(motor.plat)} ditambahkan (data lokal).`, 'success');
-      proceed(motor);
-    } catch (caught) {
-      formError = messageOf(caught);
-    } finally {
-      savingMotor = false;
+      const created = await repo.createMotor(fallback);
+      pushToast(`Kendaraan ${formatPlat(created.plat)} didaftarkan otomatis.`, 'success');
+      return created;
+    } catch {
+      pushToast('Kendaraan gagal disimpan, lanjut tanpa data kendaraan.', 'error');
+      return fallback;
     }
   }
 
-  async function simulateScan(): Promise<void> {
-    const motors = await repo.listMotors().catch(() => []);
-
-    if (motors.length === 0) {
-      pushToast('Belum ada data motor untuk simulasi.', 'error');
-      return;
-    }
-
-    const picked = motors[Math.floor(Math.random() * motors.length)];
-    pushToast(`Simulasi: ${formatPlat(picked.plat)}`, 'info');
-    await resolvePlate(picked.plat);
+  /** "Scan Ulang": tutup dialog & kembali ke preview kamera. */
+  function rescan(): void {
+    resultOpen = false;
+    manualOpen = false;
+    filledOpen = false;
+    manualError = '';
+    pendingPlat = '';
+    analysis = null;
+    analysisPlate = '';
+    errorMessage = '';
   }
 
-  function cancelFlow(): void {
-    stopScanLoop();
-    stopCamera();
+  /** "Batal": batalkan proses scan dan keluar ke beranda. */
+  function cancelScan(): void {
+    leaving = true;
+    resultOpen = false;
+    manualOpen = false;
+    filledOpen = false;
+    pausePreview();
+    resetFlow();
     go('beranda');
   }
 </script>
 
 <AppShell {current} {onnavigate}>
   <div class="space-y-3">
+    {#if !online}
+      <div class="card border-warning bg-warning-soft px-4 py-3 text-sm text-warning">
+        Tidak ada koneksi internet. Pembacaan plat memerlukan server AI — gunakan input manual.
+      </div>
+    {/if}
+
     <div class="relative overflow-hidden rounded-[var(--radius-card)] bg-ink">
       <video
         bind:this={video}
@@ -254,57 +266,130 @@
       ></video>
 
       {#if camera === 'ready'}
-        <ScanOverlay active={true} />
+        <ScanOverlay active={!processing} />
       {/if}
 
-      {#if camera !== 'ready'}
-        <div
-          class="absolute inset-0 grid place-items-center bg-ink/85 p-6 text-center text-white"
-        >
+      {#if processing}
+        <div class="absolute inset-0 grid place-items-center bg-ink/70 p-6 text-center text-white">
+          <div class="space-y-2">
+            <p class="text-sm font-semibold">Memproses…</p>
+            <p class="text-xs text-white/70">{progress}</p>
+          </div>
+        </div>
+      {:else if camera !== 'ready'}
+        <div class="absolute inset-0 grid place-items-center bg-ink/85 p-6 text-center text-white">
           <div class="space-y-2">
             <p class="text-lg font-bold">
               {camera === 'requesting'
                 ? 'Menyiapkan kamera…'
-                : camera === 'denied'
-                  ? 'Izin kamera ditolak'
-                  : 'Kamera tidak tersedia'}
+                : camera === 'paused'
+                  ? 'Kamera dijeda'
+                  : camera === 'denied'
+                    ? 'Izin kamera ditolak'
+                    : 'Kamera tidak tersedia'}
             </p>
-            <p class="mx-auto max-w-xs text-sm text-white/70">{ocrMessage}</p>
-            {#if camera !== 'requesting'}
+            <p class="mx-auto max-w-xs text-sm text-white/70">
+              {camera === 'paused'
+                ? 'Selesaikan atau tutup dialog untuk melanjutkan.'
+                : errorMessage !== ''
+                  ? errorMessage
+                  : 'Arahkan kamera ke plat, lalu tekan Ambil Gambar.'}
+            </p>
+            <div class="flex flex-wrap justify-center gap-2">
               <Button variant="secondary" size="md" onclick={() => (manualOpen = true)}>
-                Input plat manual
+                Input Manual
               </Button>
-            {/if}
+              {#if camera === 'unavailable' || camera === 'denied'}
+                <Button variant="ghost" size="md" onclick={() => void startCamera()}>
+                  Coba Kamera
+                </Button>
+              {/if}
+            </div>
           </div>
         </div>
       {/if}
-
-      {#if camera === 'ready'}
-        <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink/80 to-transparent p-3">
-          <p class="text-center text-xs font-medium text-white/90">{ocrMessage}</p>
-        </div>
-      {/if}
     </div>
+
+    {#if errorMessage !== '' && !processing}
+      <p class="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-ink" role="alert">
+        {errorMessage}
+      </p>
+    {/if}
+
+    <Button size="lg" full disabled={camera !== 'ready' || processing} loading={processing} onclick={() => void capture()}>
+      Ambil Gambar
+    </Button>
 
     <div class="grid grid-cols-2 gap-2">
       <Button variant="secondary" onclick={() => (manualOpen = true)}>Input Manual</Button>
-      <Button variant="ghost" onclick={cancelFlow}>Batal</Button>
+      <Button variant="ghost" onclick={cancelScan}>Batal</Button>
     </div>
 
-    <div class="card flex items-center justify-between gap-3 px-4 py-3">
-      <div>
-        <p class="text-sm font-semibold text-ink">Tidak ada kamera?</p>
-        <p class="text-xs text-muted">Coba alur dengan plat contoh dari data dummy.</p>
-      </div>
-      <Button variant="secondary" onclick={() => void simulateScan()}>Simulasi</Button>
-    </div>
+    <p class="text-center text-xs text-muted">
+      Foto dikirim ke server AI untuk dibaca plat dan warnanya. Maksimal 1 MB setelah kompresi.
+    </p>
   </div>
 </AppShell>
 
 <Dialog
+  bind:open={resultOpen}
+  title="Hasil Pembacaan"
+  description="Periksa hasil AI. Betulkan plat bila ada karakter yang salah."
+>
+  <div class="space-y-3">
+    <div class="card space-y-2 px-4 py-3 text-center">
+      <p class="plate text-2xl">{analysisPreview || '—'}</p>
+      <div class="flex flex-wrap justify-center gap-1.5">
+        {#if analysis?.color}
+          <Badge tone="info">Warna: {analysis.color}</Badge>
+        {/if}
+        {#if analysis?.month || analysis?.year}
+          <Badge tone="neutral">Berlaku {analysis.month ?? '--'}/{analysis.year ?? '----'}</Badge>
+        {/if}
+        {#if !analysis?.color}
+          <Badge tone="warning">Warna tidak terbaca</Badge>
+        {/if}
+      </div>
+    </div>
+
+    <input
+      class="field plate text-center text-xl uppercase"
+      bind:value={analysisPlate}
+      placeholder="B 1234 ABC"
+      inputmode="text"
+      autocomplete="off"
+      autocapitalize="characters"
+      autocorrect="off"
+      spellcheck="false"
+      enterkeyhint="go"
+      aria-label="Perbaiki nomor plat"
+      oninput={() => (analysisPlate = analysisPlate.toUpperCase())}
+      onkeydown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          submitResult();
+        }
+      }}
+    />
+
+    {#if !analysisValid}
+      <p class="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-ink" role="alert">
+        Nomor plat belum valid. Contoh: B 1234 ABC.
+      </p>
+    {/if}
+  </div>
+
+  {#snippet footer()}
+    <Button variant="secondary" onclick={rescan}>Scan Ulang</Button>
+    <Button variant="ghost" onclick={cancelScan}>Batal</Button>
+    <Button disabled={!analysisValid} onclick={submitResult}>Lanjut</Button>
+  {/snippet}
+</Dialog>
+
+<Dialog
   bind:open={manualOpen}
   title="Masukkan Nomor Plat"
-  description="Ketik atau pakai keypad di bawah."
+  description="Server AI tidak bisa membaca plat. Ketik manual menggunakan keyboard perangkat."
 >
   <div class="space-y-3">
     <input
@@ -313,10 +398,20 @@
       placeholder="B 1234 ABC"
       inputmode="text"
       autocomplete="off"
+      autocapitalize="characters"
+      autocorrect="off"
+      spellcheck="false"
+      enterkeyhint="go"
       aria-label="Nomor plat"
       oninput={() => {
         manualPlat = manualPlat.toUpperCase();
         manualError = '';
+      }}
+      onkeydown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          submitManual();
+        }
       }}
     />
 
@@ -327,56 +422,12 @@
         {manualError}
       </p>
     {/if}
-
-    <PlateKeypad value={manualPlat} onchange={(v) => (manualPlat = v)} />
   </div>
 
   {#snippet footer()}
-    <Button variant="secondary" onclick={() => (manualOpen = false)}>Batal</Button>
+    <Button variant="secondary" onclick={rescan}>Scan Ulang</Button>
+    <Button variant="ghost" onclick={cancelScan}>Batal</Button>
     <Button onclick={submitManual}>Lanjut</Button>
-  {/snippet}
-</Dialog>
-
-<Dialog
-  bind:open={newMotorOpen}
-  title="Kendaraan Baru"
-  description={`Plat ${formatPlat(pendingPlat)} belum terdaftar. Lengkapi data kendaraan.`}
->
-  <div class="space-y-3">
-    <div>
-      <label class="field-label" for="nama-pemilik">Nama pemilik</label>
-      <input
-        id="nama-pemilik"
-        class="field"
-        bind:value={nama}
-        placeholder="cth: Andi"
-        maxlength="80"
-      />
-    </div>
-
-    <div>
-      <label class="field-label" for="jenis-kendaraan">Jenis kendaraan</label>
-      <input
-        id="jenis-kendaraan"
-        class="field"
-        bind:value={jenis}
-        placeholder="cth: Honda Beat"
-        maxlength="80"
-      />
-    </div>
-
-    {#if formError !== ''}
-      <p class="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-ink" role="alert">
-        {formError}
-      </p>
-    {/if}
-
-    <p class="text-xs text-muted">Disimpan di perangkat ini (dummy data), belum ke database.</p>
-  </div>
-
-  {#snippet footer()}
-    <Button variant="secondary" onclick={() => (newMotorOpen = false)}>Batal</Button>
-    <Button loading={savingMotor} onclick={() => void saveMotor()}>Simpan</Button>
   {/snippet}
 </Dialog>
 
@@ -390,15 +441,11 @@
   </p>
 
   {#snippet footer()}
-    <Button
-      variant="secondary"
-      onclick={() => {
-        filledOpen = false;
-        go('beranda');
-      }}>Tidak</Button
-    >
+    <Button variant="secondary" onclick={rescan}>Scan Ulang</Button>
+    <Button variant="ghost" onclick={cancelScan}>Batal</Button>
     <Button
       onclick={() => {
+        leaving = true;
         filledOpen = false;
         go('bbm');
       }}>Lanjut (Pelangsir)</Button

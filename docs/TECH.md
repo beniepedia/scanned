@@ -16,9 +16,19 @@ Dicek langsung dari registry pada saat instalasi (bukan dari memori):
 | typescript                     | 6.0.3    | lockfile                             |
 | svelte-check                   | 4.7.7    | lockfile                             |
 | eslint                         | 10.13.0  | `npm view eslint version` (peer-compatible dengan typescript-eslint 8 & eslint-plugin-svelte 3) |
-| tesseract.js                   | 7.0.0    | `npm view tesseract.js version`      |
 | @fontsource-variable/inter     | 5.3.0    | lockfile                             |
 | @fontsource-variable/jetbrains-mono | 5.3.0 | lockfile                            |
+
+## PWA & aset statis
+
+- `public/manifest.webmanifest` disajikan Apache sebagai
+  `application/manifest+json` (lihat `public/.htaccess`).
+- Ikon 192/512/maskable di `public/icons/` (sumber SVG ikut disimpan).
+- Service worker `public/sw.js` (cache `anpr-spbu-v1`) aktif di build produksi.
+- Pembacaan plat: backend `backend-node` (Express 5, multer 2, sharp 0.34,
+  `@google/genai` 1.x, model `gemini-2.5-flash`) diakses via proxy `/ai/`.
+- `.htaccess` menambah MIME `application/wasm` (.wasm), `application/x-gzip` (.gz),
+  `application/manifest+json` (.webmanifest).
 
 ## Catatan kompatibilitas
 
@@ -52,5 +62,7 @@ npm view tailwindcss version
 | `npm run build`                   | sukses (~0,5 s), `public/app/.vite/manifest.json` dibuat               |
 | E2E (Playwright + Chrome, local)  | login → nozzle → beranda → scan → BBM → sukses → riwayat → hapus → reload → logout; 0 console error |
 | E2E (mode `remote`)               | alur sama berjalan di atas API CI4, data persist di `writable/app/*.json` |
-| OCR (tesseract.js)                | kamera palsu: OCR jalan & fallback manual muncul; gambar plat sintetis "B 1234 ABC" terbaca `B1234ABC` |
+| Capture → backend AI (mock)        | sukses: dialog "Hasil Pembacaan" (plat dinormalisasi, warna, berlaku) → lanjut; 422/timeout: dialog Input Manual otomatis; payload ±12 KB |
+| Kompresi gambar                   | 3000×2000 JPEG 1916 KB → **485 KB** (1600×1067, 1 percobaan) |
+| Backend AI (nyata)                | `POST /ai/analyze-vehicle` via proxy (http & https) → respons Gemini diterima; plat sintetis tidak terbaca → 422 → manual (sesuai desain) |
 | Responsif (360/390/768/1024/1440) | tidak ada horizontal overflow; rail nav tampil ≥768px; target sentuh ≥44px |

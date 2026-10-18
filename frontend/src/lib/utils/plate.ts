@@ -20,21 +20,6 @@ export function formatPlat(raw: string): string {
   return match ? `${match[1]} ${match[2]} ${match[3]}` : key;
 }
 
-/** Cari pola plat di teks bebas (hasil OCR). */
-export function extractPlatFromText(text: string): string | null {
-  const upper = text.toUpperCase();
-  const withSep = upper.match(/[A-Z]{1,2}\s?[0-9]{1,4}\s?[A-Z]{1,3}/);
-
-  if (withSep && isPlatValid(withSep[0])) {
-    return normalisePlat(withSep[0]);
-  }
-
-  const glued = upper.replace(/[^A-Z0-9]/g, '');
-  const candidate = glued.match(/[A-Z]{1,2}[0-9]{1,4}[A-Z]{1,3}/);
-
-  return candidate && isPlatValid(candidate[0]) ? candidate[0] : null;
-}
-
 export function todayLocal(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');

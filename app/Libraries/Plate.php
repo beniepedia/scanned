@@ -36,7 +36,7 @@ final class Plate
     }
 
     /**
-     * Pulls a plate out of free text (OCR output, operator notes).
+     * Pulls a plate out of free text (AI output, operator notes).
      */
     public static function extract(?string $text): ?string
     {

@@ -1,4 +1,4 @@
-import type { BbmType, Motor, ScanResult, Transaksi } from '$lib/types';
+import type { BbmType, Motor, Transaksi } from '$lib/types';
 
 export interface LoginResult {
   nomor: string;
@@ -17,9 +17,13 @@ export interface DataRepo {
   findMotor(plat: string): Promise<Motor | null>;
   createMotor(motor: Motor): Promise<Motor>;
   listTransaksi(): Promise<Transaksi[]>;
-  createTransaksi(input: { plat: string; bbm: BbmType; liter: number }): Promise<Transaksi>;
+  createTransaksi(input: {
+    plat: string;
+    bbm: BbmType;
+    liter: number;
+    warna?: string;
+  }): Promise<Transaksi>;
   deleteTransaksi(id: number): Promise<void>;
-  scanText(text: string): Promise<ScanResult>;
 }
 
 export function messageOf(error: unknown): string {

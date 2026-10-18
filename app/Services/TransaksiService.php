@@ -58,7 +58,7 @@ final class TransaksiService
     /**
      * @return Transaksi
      */
-    public function create(string $plat, string $bbm, float $liter): array
+    public function create(string $plat, string $bbm, float $liter, ?string $warna = null): array
     {
         $key = Plate::normalise($plat);
         $row = [
@@ -69,6 +69,10 @@ final class TransaksiService
             'bbm'     => $bbm,
             'liter'   => $liter,
         ];
+
+        if ($warna !== null && trim($warna) !== '') {
+            $row['warna'] = strtolower(trim($warna));
+        }
 
         $this->store->mutate(static function (array $rows) use (&$row): array {
             $nextId = 1;

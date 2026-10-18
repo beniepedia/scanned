@@ -37,7 +37,12 @@
     saving = true;
 
     try {
-      const created = await addTransaksi({ plat: flow.plat, bbm, liter: value });
+      const created = await addTransaksi({
+        plat: flow.plat,
+        bbm,
+        liter: value,
+        warna: flow.motor?.warna,
+      });
       setLastTransaksi(created);
       pushToast('Transaksi tersimpan di perangkat.', 'success');
       go('sukses');

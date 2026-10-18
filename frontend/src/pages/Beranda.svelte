@@ -7,7 +7,7 @@
   import Button from '$lib/components/ui/Button.svelte';
   import Dialog from '$lib/components/ui/Dialog.svelte';
   import EmptyState from '$lib/components/ui/EmptyState.svelte';
-  import Spinner from '$lib/components/ui/Spinner.svelte';
+  import Skeleton from '$lib/components/ui/Skeleton.svelte';
   import { repo, messageOf } from '$lib/repo';
   import { session, endSession } from '$lib/stores/session.svelte';
   import { resetFlow } from '$lib/stores/flow.svelte';
@@ -62,14 +62,22 @@
       <OperatorCard operator={session.operator} />
     {/if}
 
-    <div class="grid grid-cols-3 gap-2">
-      <MetricCard label="Hari Ini" value={String(ringkasan.count)} />
-      <MetricCard label="Total Liter" value={liter(ringkasan.liter)} suffix="L" />
-      <MetricCard
-        label="Motor"
-        value={loadingMotor ? '…' : String(totalMotor)}
-      />
-    </div>
+    {#if txState.loading || loadingMotor}
+      <div class="grid grid-cols-3 gap-2" aria-hidden="true">
+        {#each [1, 2, 3] as index (index)}
+          <div class="card px-3 py-3">
+            <Skeleton class="mx-auto h-6 w-10" />
+            <Skeleton class="mx-auto mt-2 h-3 w-14" />
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <div class="grid grid-cols-3 gap-2">
+        <MetricCard label="Hari Ini" value={String(ringkasan.count)} />
+        <MetricCard label="Total Liter" value={liter(ringkasan.liter)} suffix="L" />
+        <MetricCard label="Motor" value={String(totalMotor)} />
+      </div>
+    {/if}
 
     {#if motorError !== ''}
       <p class="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger-ink" role="alert">
@@ -94,8 +102,13 @@
       </div>
 
       {#if txState.loading}
-        <div class="card flex items-center justify-center gap-2 py-8 text-sm text-muted">
-          <Spinner class="size-4" /> Memuat transaksi…
+        <div class="space-y-2" aria-label="Memuat riwayat">
+          {#each [1, 2, 3] as index (index)}
+            <div class="card px-4 py-3">
+              <Skeleton class="h-4 w-28" />
+              <Skeleton class="mt-2 h-3 w-40" />
+            </div>
+          {/each}
         </div>
       {:else if txState.error !== ''}
         <div class="card space-y-2 p-4 text-sm">

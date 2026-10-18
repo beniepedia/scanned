@@ -11,7 +11,9 @@ use CodeIgniter\Config\Services;
 if (! function_exists('vite_asset')) {
     function vite_asset(string $entry = 'src/main.ts'): string
     {
-        if ((string) env('VITE_DEV', '0') === '1') {
+        // Dev server dipakai hanya bila benar-benar hidup, supaya shell tidak
+        // blank saat `npm run dev` lupa dijalankan.
+        if ((string) env('VITE_DEV', '0') === '1' && vite_hmr_running()) {
             // Harus sama dengan `base` di frontend/vite.config.ts.
             $base   = 'http://localhost:5173/app/';
             $client = $base . '@vite/client';

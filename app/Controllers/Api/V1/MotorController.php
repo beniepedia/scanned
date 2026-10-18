@@ -53,10 +53,23 @@ class MotorController extends BaseApiController
             ]);
         }
 
+        $warna = isset($payload['warna']) ? (string) $payload['warna'] : null;
+
+        $tahun = isset($payload['berlakuTahun']) && is_numeric($payload['berlakuTahun'])
+            ? (int) $payload['berlakuTahun']
+            : null;
+
+        $bulan = isset($payload['berlakuBulan']) && preg_match('/^(0[1-9]|1[0-2])$/', (string) $payload['berlakuBulan']) === 1
+            ? (string) $payload['berlakuBulan']
+            : null;
+
         $motor = $this->motors->create(
             (string) $payload['nama'],
             (string) $payload['jenis'],
-            (string) $payload['plat']
+            (string) $payload['plat'],
+            $warna,
+            $tahun,
+            $bulan
         );
 
         return $this->created($motor);

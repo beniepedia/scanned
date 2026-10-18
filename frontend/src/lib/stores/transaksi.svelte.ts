@@ -25,6 +25,7 @@ export async function addTransaksi(input: {
   plat: string;
   bbm: BbmType;
   liter: number;
+  warna?: string;
 }): Promise<Transaksi> {
   const created = await repo.createTransaksi(input);
   txState.items = [created, ...txState.items];

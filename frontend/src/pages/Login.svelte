@@ -49,7 +49,7 @@
 
 <div class="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 px-4 py-10">
   <div class="text-center">
-    <p class="text-[34px] leading-none font-extrabold tracking-tight text-primary">SPBU SCAN</p>
+    <p class="text-[32px] leading-none font-extrabold tracking-tight text-primary sm:text-[34px]">ANPR SPBU</p>
     <p class="mt-2 text-sm text-muted">Masuk shift petugas</p>
   </div>
 

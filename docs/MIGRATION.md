@@ -2,7 +2,8 @@
 
 ## Sumber acuan
 
-Aplikasi **SPBU Scan** versi Expo (React Native 0.86 + Expo SDK 57), dengan
+Aplikasi sumber **spbu-scan** (Expo, React Native 0.86 + Expo SDK 57);
+produk hasil migrasi diberi nama **ANPR SPBU**. Sumber memakai
 vision-camera + MLKit OCR. Karena sumbernya native, migrasi ini adalah **penulisan
 ulang UI**, bukan port kode.
 
@@ -13,7 +14,7 @@ ulang UI**, bukan port kode.
 | `LoginScreen`              | `pages/Login.svelte`                      | + dialog pilih nozzle 01–04 |
 | `HomeScreen`               | `pages/Beranda.svelte`                    | kartu SPBU & operator, 3 metrik, riwayat hari ini |
 | `HistoryScreen`            | `pages/Riwayat.svelte`                    | + pencarian plat, filter BBM, hapus, pagination |
-| `ScanScreen`               | `pages/Scan.svelte`                       | kamera web + OCR tesseract.js, input manual + keypad |
+| `ScanScreen`               | `pages/Scan.svelte`                       | preview kamera → tombol Ambil Gambar → backend AI; fallback input manual |
 | `BbmScreen`                | `pages/Bbm.svelte`                        | 3 BBM berwarna, numpad liter kustom + preset |
 | Sukses (inline `App.tsx`)  | `pages/Sukses.svelte`                     | struk + total hari ini |
 | Bottom bar + FAB scan      | `components/app/BottomNav.svelte`          | bottom bar (mobile), rail (tablet/desktop) |
@@ -54,7 +55,6 @@ Test asli (`node:test`) dipertahankan di `plate.test.ts`; versi PHP ada di
 
 Selesai:
 - 6 halaman + navigasi, guard sesi & flow, responsif mobile/tablet/desktop
-- OCR browser (tesseract.js) dengan preprocessing crop + grayscale + threshold
 - Simulasi interaksi: login, nozzle, kendaraan baru, blokir harian, catat, hapus,
   pencarian, filter, pagination, empty/loading/error state, toast, haptic
 - API dummy CI4 dengan persistensi JSON, validasi server, unit test PHP & TS
@@ -62,17 +62,40 @@ Selesai:
 Belum (tahap 2):
 - Database + migration + model, transaksi atomik, soft delete
 - Autentikasi/otorisasi produksi (session/token, role supervisor)
-- OCR sisi server, koreksi plat 1-tap, riwayat multi-hari/filter tanggal
+- penyimpanan hasil AI (warna/masa berlaku) ke backend & DB, riwayat multi-hari/filter tanggal
 - PWA/offline, ekspor laporan, admin panel, multi-tenant (SPBU/dispenser/ml)
 
-## Catatan OCR
+## Catatan pembacaan plat (AI)
 
-- Engine: `tesseract.js` (worker `eng`, whitelist A–Z0–9). Model bahasa diunduh
-  dari CDN saat pertama kali (±15 MB) lalu di-cache browser → **butuh internet
-  pada pemakaian pertama**; untuk operasi offline perlu hosting `traineddata` lokal.
-- Akurasi bergantung kualitas foto. Uji internal: gambar plat bersih "B 1234 ABC"
-  terbaca `B1234ABC`. Foto miring/buram/kontras rendah sering gagal.
-- Karena itu input manual + keypad selalu tersedia, loop berhenti setelah 4 percobaan
-  atau 12 detik lalu membuka dialog manual.
-- Kamera palsu (fake device) hanya menghasilkan noise, diuji: OCR jalan, tidak
-  menemukan plat, fallback manual muncul (sesuai desain).
+- OCR lokal (tesseract.js) **dihapus** pada revisi ini: akurasi tidak memadai untuk
+  plat Indonesia dan membebani tablet.
+- Alur baru: preview kamera → tombol **Ambil Gambar** → `capture.ts` (ImageCapture
+  atau canvas) → `compress.ts` (JPEG, sisi terpanjang 1600 px, ≤900 KB) →
+  `api/vehicle.ts` mengirim `Blob` multipart (field `file`) ke
+  `POST /ai/analyze-vehicle` (Express + Gemini 2.5 Flash via proxy Apache `/ai/`).
+- Respons: `{success, message, data:{color, plate, year, month}}`. Frontend
+  memvalidasi `plate` (pola RI) dan menormalkan warna/tahun/bulan; field selain
+  plat bersifat opsional.
+- Hasil ditampilkan di dialog "Hasil Pembacaan" (plat bisa dibetulkan 1-tap).
+  Setelah "Lanjut", **dialog isian nama pelanggan dilewati**: plat yang belum
+  terdaftar langsung didaftarkan otomatis (`nama: "Tanpa nama"`,
+  `jenis: "Motor <warna>"`, plus warna/masa berlaku dari AI) lalu lanjut ke BBM.
+  Dialog "sudah isi hari ini" tetap muncul bila plat sudah mengisi hari ini.
+- `success:false`, error HTTP, timeout, atau jaringan putus → dialog **Input Manual**
+  terbuka otomatis (plat terakhir dipakai sebagai prefill bila ada). Input manual
+  tetap berfungsi offline.
+- Foto dikirim keluar perangkat (Gemini cloud) → perhatikan privasi dan biaya API.
+
+## Status
+
+Selesai:
+- 6 halaman + navigasi, guard sesi & flow, responsif mobile/tablet/desktop
+- Simulasi interaksi: login, nozzle, kendaraan baru, blokir harian, catat, hapus,
+  pencarian, filter, pagination, empty/loading/error state, toast, haptic
+- API dummy CI4 dengan persistensi JSON, validasi server, unit test PHP & TS
+
+Belum (tahap 2):
+- Database + migration + model, transaksi atomik, soft delete
+- Autentikasi/otorisasi produksi (session/token, role supervisor)
+- penyimpanan hasil AI (warna/masa berlaku) ke backend & DB, riwayat multi-hari/filter tanggal
+- PWA/offline, ekspor laporan, admin panel, multi-tenant (SPBU/dispenser/ml)

@@ -1,4 +1,4 @@
-# AGENTS.md — SPBU Scan (CodeIgniter 4 + Svelte 5)
+# AGENTS.md — ANPR SPBU (CodeIgniter 4 + Svelte 5)
 
 Panduan untuk agen/AI yang bekerja di repo ini.
 
@@ -9,6 +9,11 @@ Panduan untuk agen/AI yang bekerja di repo ini.
 - Verifikasi versi dengan registry sebelum menambah dependency:
   `composer show <pkg> --all`, `npm view <pkg> version`.
 - Jangan menambah dependency untuk hal yang bisa diselesaikan stdlib/browser API.
+- Jangan memakai aset CDN untuk runtime (font, ikon); app shell harus tetap
+  jalan offline. Pembacaan plat memakai backend AI (`backend-node`) via proxy
+  `/ai/` — jangan menambah kembali library OCR (tesseract/dsb) tanpa keputusan.
+- Gambar dikirim sebagai `Blob` multipart (field `file`) setelah dikompres
+  ≤900 KB di `lib/camera/compress.ts`. Input manual hanya sebagai fallback.
 - Tidak ada database pada tahap ini. Data dummy: `frontend/src/lib/data/` (mode
   `local`) atau `writable/app/*.json` (mode `remote`).
 

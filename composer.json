@@ -1,6 +1,6 @@
 {
-    "name": "codeigniter4/appstarter",
-    "description": "CodeIgniter4 starter app",
+    "name": "anpr/spbu",
+    "description": "ANPR SPBU - pencatatan isi BBM motor (CodeIgniter 4 API + Svelte 5 UI)",
     "license": "MIT",
     "type": "project",
     "homepage": "https://codeigniter.com",

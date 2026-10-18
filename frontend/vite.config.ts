@@ -3,9 +3,6 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 
-// Build output is served by CodeIgniter from public/app/.
-// `base` must match the route that maps to that folder (see app/Config/Routes.php
-// and the /app rewrite in public/.htaccess).
 export default defineConfig({
   base: '/app/',
   plugins: [svelte(), tailwindcss()],
@@ -32,6 +29,12 @@ export default defineConfig({
     // API directly from the dev server through this proxy.
     proxy: {
       '/api': {
+        target: 'http://spbu-svelte.test',
+        changeOrigin: true,
+      },
+      // Backend AI (Express via proxy Apache /ai/). Tanpa ini, Vite menolak
+      // request /ai/* karena base dev server adalah /app/.
+      '/ai': {
         target: 'http://spbu-svelte.test',
         changeOrigin: true,
       },

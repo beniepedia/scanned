@@ -43,6 +43,19 @@ define SITE "spbu-svelte.test"
 </VirtualHost>
 ```
 
+Tambahkan juga reverse proxy ke backend AI di kedua blok (`*:80` dan `*:443`):
+
+```apache
+ProxyPreserveHost On
+ProxyPass /ai/ http://127.0.0.1:8000/
+ProxyPassReverse /ai/ http://127.0.0.1:8000/
+```
+
+Syarat: `mod_proxy` dan `mod_proxy_http` aktif di `httpd.conf`
+(`LoadModule proxy_module modules/mod_proxy.so`, `LoadModule proxy_http_module
+modules/mod_proxy_http.so`). Backend-node harus berjalan (`cd backend-node && npm start`)
+dan hanya mendengarkan `127.0.0.1:8000`.
+
 2. `C:\Windows\System32\drivers\etc\hosts`
 
 ```

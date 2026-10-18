@@ -82,7 +82,7 @@
   class="fixed top-0 left-0 z-40 hidden h-dvh w-20 flex-col items-center gap-2 border-r-[1.5px] border-line bg-surface py-6 md:flex"
   aria-label="Navigasi utama"
 >
-  <span class="mb-3 text-[10px] font-extrabold tracking-widest text-primary">SPBU</span>
+  <span class="mb-3 text-[10px] font-extrabold tracking-widest text-primary">ANPR</span>
 
   <button
     type="button"

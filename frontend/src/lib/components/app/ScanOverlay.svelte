@@ -16,7 +16,6 @@
     {#if active}
       <span
         class="absolute inset-x-1 top-0 h-1 animate-[scanline_2.4s_ease-in-out_infinite] rounded-full bg-primary/50"
-        style="--scan-height: 100%"
       ></span>
     {/if}
   </div>

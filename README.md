@@ -1,7 +1,8 @@
-# SPBU Scan — CodeIgniter 4 + Svelte 5
+# ANPR SPBU — CodeIgniter 4 + Svelte 5
 
-Aplikasi pencatatan pengisian BBM motor untuk operator SPBU. Migrasi dari aplikasi
-Expo/React Native (`spbu-scan` lama) ke **CodeIgniter 4 (API + shell)** dan
+ANPR SPBU (Automatic Number Plate Recognition SPBU) — aplikasi pencatatan
+pengisian BBM motor untuk operator SPBU. Migrasi dari aplikasi Expo/React Native
+(`spbu-scan` lama) ke **CodeIgniter 4 (API + shell)** dan
 **Svelte 5 + Vite + Tailwind CSS 4** (UI).
 
 Tahap 1 fokus pada **UI/UX mobile & tablet** dengan dummy data. Belum ada database,
@@ -14,7 +15,7 @@ autentikasi produksi, maupun business logic backend yang kompleks.
 | Backend | PHP 8.4.16, CodeIgniter 4.7.5                    |
 | Frontend| Svelte 5.57.2 (runes), Vite 8.3.4, TypeScript 6  |
 | Styling | Tailwind CSS 4.3.3 (CSS-first `@theme`)          |
-| OCR     | tesseract.js 7.0.0 (berjalan di browser)          |
+| Vision  | backend AI `backend-node` (Express 5 + Gemini 2.5 Flash) via proxy `/ai/` |
 | Font    | Inter Variable + JetBrains Mono Variable          |
 
 Versi lengkap & hasil verifikasi: [`docs/TECH.md`](docs/TECH.md).
@@ -27,7 +28,7 @@ app/                 CodeIgniter 4 (controller, service, library, view shell)
   Views/app.php      Shell SPA (memuat bundle Vite)
 frontend/            Aplikasi Svelte (Vite root)
   src/pages/         Halaman: login, beranda, scan, bbm, sukses, riwayat
-  src/lib/           komponen, store, repo data, OCR, util
+  src/lib/           komponen, store, repo data, kamera, util
 docs/                Arsitektur, migrasi, vhost, versi
 public/app/          Hasil build frontend (dibuat oleh `npm run build`)
 ```
@@ -81,7 +82,11 @@ cd frontend && npm run dev
 # 3) buka http://spbu-svelte.test
 ```
 
-Shell CodeIgniter akan memuat `http://localhost:5173/@vite/client` + entry Svelte.
+Shell CodeIgniter akan memuat `http://localhost:5173/app/@vite/client` + entry Svelte.
+Pembacaan plat memakai backend AI, jadi backend-node harus berjalan
+(`cd backend-node && npm start`) dan diakses lewat proxy `/ai/`. Dev server Vite
+sudah memproksikan `/api` dan `/ai` ke `http://spbu-svelte.test`, jadi membuka
+`http://localhost:5173/app/` langsung tetap bisa analisis plat.
 Kembalikan `VITE_DEV = 0` setelah selesai. Alternatif tanpa mengubah `.env`:
 `php spark serve --port 8080` lalu sesuaikan `app.baseURL` sementara.
 
@@ -95,6 +100,30 @@ Kembalikan `VITE_DEV = 0` setelah selesai. Alternatif tanpa mengubah `.env`:
 
 Setelah login, pilih nozzle 01–04. Data motor awal: `frontend/src/lib/data/motors.ts`
 (10 kendaraan). Plat contoh: `B 1234 ABC`, `B 5678 DEF`, `D 901 GHI`.
+
+## Backend AI (pembacaan plat)
+
+`backend-node/` adalah Express 5 + multer + sharp + `@google/genai` (Gemini 2.5 Flash).
+
+```bash
+cd backend-node
+# .env: GEMINI_API_KEY=... , PORT=8000
+npm install
+npm start
+```
+
+Akses dari frontend lewat reverse proxy Apache (same-origin, aman untuk HTTPS):
+
+```apache
+ProxyPreserveHost On
+ProxyPass /ai/ http://127.0.0.1:8000/
+ProxyPassReverse /ai/ http://127.0.0.1:8000/
+```
+
+Endpoint: `POST /ai/analyze-vehicle` (multipart field `file`) → `{success, message,
+data:{color, plate, year, month}}`. Frontend mengompres gambar ≤900 KB
+(`lib/camera/compress.ts`) lalu mengirimnya sebagai `Blob`. Bila backend
+mengembalikan `success:false`/error/timeout, dialog **Input Manual** terbuka otomatis.
 
 ## Sumber data
 
@@ -132,11 +161,23 @@ npm run test                    # node:test untuk util plat
 
 - Login operator + pemilihan nozzle (sesi disimpan di perangkat)
 - Beranda: kartu SPBU/operator, 3 metrik, riwayat hari ini, empty/loading/error state
-- Scan plat: kamera `getUserMedia`, overlay + animasi scan, OCR tesseract.js,
-  fallback input manual + keypad plat, dialog kendaraan baru, dialog "sudah isi hari ini"
+- Scan plat: kamera `getUserMedia` (preview) → tombol **Ambil Gambar** → kompres
+  ≤900 KB → kirim `Blob` ke backend AI → dialog hasil (plat, warna, masa berlaku,
+  plat bisa dibetulkan) → kendaraan baru **didaftarkan otomatis** (tanpa mengisi
+  nama pelanggan) → dialog "sudah isi hari ini" bila perlu
 - Input BBM: 3 jenis BBM berwarna, numpad liter kustom, preset, validasi 0–100
 - Halaman sukses + struk
 - Riwayat: pencarian plat, filter BBM, hapus dengan konfirmasi, pagination 10/halaman
 - Responsif: bottom nav + FAB (mobile), rail nav (tablet/desktop), tanpa horizontal scroll
+
+## PWA & offline
+
+Service worker (`public/sw.js`, cache `anpr-spbu-v1`) aktif pada build produksi:
+app shell + `/app/*` + ikon di-cache, `/api/*` dan `/ai/*` dilewati. Scan plat
+memerlukan jaringan karena gambar dikirim ke backend AI; input manual tetap offline.
+
+Penting: **PWA & kamera butuh secure context** — `http://localhost` atau HTTPS
+dengan sertifikat tepercaya. `http://spbu-svelte.test` dan akses via IP LAN tidak
+cukup. Detail + cara install di tablet: [`docs/PWA.md`](docs/PWA.md).
 
 Detail status dan batasan: [`docs/MIGRATION.md`](docs/MIGRATION.md).

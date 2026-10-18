@@ -18,6 +18,4 @@ $routes->group('api/v1', ['namespace' => 'App\\Controllers\\Api\\V1'], static fu
     $routes->get('transaksi', 'TransaksiController::index');
     $routes->post('transaksi', 'TransaksiController::create');
     $routes->delete('transaksi/(:num)', 'TransaksiController::delete/$1');
-
-    $routes->post('scan', 'ScanController::store');
 });

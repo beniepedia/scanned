@@ -47,3 +47,7 @@ Options -Indexes
 # Disable server signature start
 ServerSignature Off
 # Disable server signature end
+# PWA & aset OCR: MIME type yang dibutuhkan browser
+<IfModule mod_mime.c>
+    AddType application/manifest+json .webmanifest
+</IfModule>

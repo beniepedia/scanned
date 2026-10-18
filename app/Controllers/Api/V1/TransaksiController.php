@@ -44,6 +44,7 @@ class TransaksiController extends BaseApiController
             'plat'  => 'required|max_length[12]',
             'bbm'   => 'required|in_list[' . implode(',', TransaksiService::BBM_TYPES) . ']',
             'liter' => 'required|decimal|greater_than[0]|less_than_equal_to[100]',
+            'warna' => 'permit_empty|max_length[30]',
         ];
         $payload = (array) ($this->request->getJSON(true) ?? []);
 
@@ -57,7 +58,9 @@ class TransaksiController extends BaseApiController
             return $this->fail('Nomor plat tidak valid.', 422, ['plat' => 'Nomor plat tidak valid.']);
         }
 
-        $row = $this->transaksi->create($plat, (string) $payload['bbm'], (float) $payload['liter']);
+        $warna = isset($payload['warna']) ? (string) $payload['warna'] : null;
+
+        $row = $this->transaksi->create($plat, (string) $payload['bbm'], (float) $payload['liter'], $warna);
 
         return $this->created($row);
     }
